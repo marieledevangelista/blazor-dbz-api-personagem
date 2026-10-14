@@ -1,0 +1,56 @@
+@page "/"
+@rendermode InteractiveServer
+@using System.Net
+@using System.Text.Json.Serialization
+@inject IHttpClientFactory HttpClientFactory
+
+<h1>Informações do Personagem</h1>
+<p>Digite o ID de um personagem de Dragon Ball para consultar os dados.</p>
+<div class="formulario"><label for="id">ID do personagem</label><input id="id" type="number" min="1" @bind="idPersonagem" /><button @onclick="Consultar" disabled="@carregando">@(carregando ? "Consultando..." : "Buscar personagem")</button></div>
+@if (!string.IsNullOrEmpty(erro)) { <p class="erro" role="alert">@erro</p> }
+@if (personagem is not null)
+{
+    <section class="cartao">
+        <h2>@personagem.Name</h2>
+        @if (!string.IsNullOrWhiteSpace(personagem.Image)) { <img class="personagem" src="@personagem.Image" alt="Imagem de @personagem.Name" /> }
+        <p><strong>Nome:</strong> @personagem.Name</p>
+        <p><strong>Planeta de Origem:</strong> @(personagem.OriginPlanet?.Name ?? "Não informado")</p>
+        <h3>Transformações:</h3>
+        @if (personagem.Transformations is { Count: > 0 }) { <ul>@foreach (var transformacao in personagem.Transformations) { <li>@transformacao.Name</li> }</ul> }
+        else { <p>Nenhuma transformação cadastrada.</p> }
+    </section>
+}
+@code {
+    private int idPersonagem = 1;
+    private bool carregando;
+    private string? erro;
+    private Personagem? personagem;
+    private async Task Consultar()
+    {
+        erro = null;
+        personagem = null;
+        if (idPersonagem < 1) { erro = "Informe um ID maior que zero."; return; }
+        carregando = true;
+        try
+        {
+            var client = HttpClientFactory.CreateClient("DragonBall");
+            using var response = await client.GetAsync($"api/characters/{idPersonagem}");
+            if (response.StatusCode == HttpStatusCode.NotFound) { erro = "Personagem não encontrado."; return; }
+            response.EnsureSuccessStatusCode();
+            personagem = await response.Content.ReadFromJsonAsync<Personagem>();
+            if (personagem is null) erro = "Não foi possível ler os dados do personagem.";
+        }
+        catch (HttpRequestException) { erro = "Não foi possível consultar a API. Verifique a conexão e tente novamente."; }
+        catch (System.Text.Json.JsonException) { erro = "A API retornou dados em formato inesperado."; }
+        finally { carregando = false; }
+    }
+    private sealed class Personagem
+    {
+        public string? Name { get; set; }
+        public string? Image { get; set; }
+        public Planeta? OriginPlanet { get; set; }
+        public List<Transformacao>? Transformations { get; set; }
+    }
+    private sealed class Planeta { public string? Name { get; set; } }
+    private sealed class Transformacao { public string? Name { get; set; } }
+}
